@@ -157,11 +157,9 @@ int main (int argc, char *argv[])
     int grabmethod = 1;
     int width = 320;
     int height = 240;
-    int num = 10; /* number of images to capture */
     int delay = 2;
     int skip = 0;
     int quality = 95;
-    int i = 0;
 
     time_t ref_time;
     struct vdIn *videoIn;
@@ -204,8 +202,7 @@ int main (int argc, char *argv[])
         if (skip > 0) { skip--; continue; }
 
         if ((difftime (time (NULL), ref_time) > delay) || delay == 0) {
-            sprintf (thisfile, "%ssnap_%d.jpg", pathfile, i);
-            i++;
+            sprintf (thisfile, "%ssnap_%lld.jpg", pathfile, (long long) ref_time);
             fprintf (stderr, "Saving image to: %s\n", thisfile);
             file = fopen (thisfile, "wb");
             
@@ -224,8 +221,6 @@ int main (int argc, char *argv[])
             }
             ref_time = time (NULL);
         }
-        if ( num == i)
-            break;
     }
     close_v4l2 (videoIn);
     free (videoIn);

@@ -24,4 +24,4 @@ install:
 
 # Applications:
 uvccapture: $(OBJECTS)
-	$(CC)   $(OBJECTS) $(XPM_LIB) $(MATH_LIB) -ljpeg -o $(APP_BINARY)
+	$(CC)   $(OBJECTS) $(XPM_LIB) $(MATH_LIB) -ljpeg -g -o $(APP_BINARY)
