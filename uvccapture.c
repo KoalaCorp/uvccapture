@@ -32,7 +32,7 @@
 #include <unistd.h>
 #include <jpeglib.h>
 #include <time.h>
-#include <linux/videodev.h>
+#include <linux/videodev2.h>
 
 #include "v4l2uvc.h"
 
@@ -43,40 +43,6 @@ void sigcatch (int sig)
 {
     fprintf (stderr, "Exiting...\n");
     run = 0;
-}
-
-void usage (void)
-{
-    fprintf (stderr, "uvccapture version %s\n", version);
-    fprintf (stderr, "Usage is: uvccapture [options]\n");
-    fprintf (stderr, "Options:\n");
-    fprintf (stderr, "-v\t\tVerbose (add more v's to be more verbose)\n");
-    fprintf (stderr, "-o<filename>\tOutput filename (default: snap.jpg). Use img%%05d.jpg for sequential files.\n");
-    fprintf (stderr, "-d<device>\tV4L2 Device (default: /dev/video0)\n");
-    fprintf (stderr,
-             "-x<width>\tImage Width (must be supported by device)\n");
-    fprintf (stderr,
-             "-y<height>\tImage Height (must be supported by device)\n");
-    fprintf (stderr,
-             "-c<command>\tCommand to run after each image capture(executed as <command> <output_filename>)\n");
-    fprintf (stderr,
-             "-j<integer>\tSkip <integer> frames before first capture\n");
-    fprintf (stderr,
-             "-t<integer>\tTake continuous shots with <integer> seconds between them (0 for single shot)\n");
-    fprintf (stderr,
-             "-n<integer>\tTake <integer> shots then exit. Only applicable when delay is non-zero\n");
-    fprintf (stderr,
-             "-q<percentage>\tJPEG Quality Compression Level (activates YUYV capture)\n");
-    fprintf (stderr, "-r\t\tUse read instead of mmap for image capture\n");
-    fprintf (stderr,
-             "-w\t\tWait for capture command to finish before starting next capture\n");
-    fprintf (stderr, "-m\t\tToggles capture mode to YUYV capture\n");
-    fprintf (stderr, "Camera Settings:\n");
-    fprintf (stderr, "-B<integer>\tBrightness\n");
-    fprintf (stderr, "-C<integer>\tContrast\n");
-    fprintf (stderr, "-S<integer>\tSaturation\n");
-    fprintf (stderr, "-G<integer>\tGain\n");
-    exit (8);
 }
 
 
@@ -187,19 +153,14 @@ int main (int argc, char *argv[])
     char *videodevice = "/dev/video0";
     char *outputfile = "snap.jpg";
     char  thisfile[200]; /* used as filename buffer in multi-file seq. */
-    char *post_capture_command[3];
-    int format = V4L2_PIX_FMT_MJPEG;
+    int format = V4L2_PIX_FMT_YUYV;
     int grabmethod = 1;
     int width = 320;
     int height = 240;
-    int brightness = 0, contrast = 0, saturation = 0, gain = 0;
-    int num = -1; /* number of images to capture */
-    int verbose = 0;
-    int delay = 0;
+    int num = 10; /* number of images to capture */
+    int delay = 2;
     int skip = 0;
     int quality = 95;
-    int post_capture_command_wait = 0;
-    int multifile = 0;   /* flag indicating that we save to a multi-file sequence */
     int i = 0;
 
     time_t ref_time;
@@ -213,169 +174,27 @@ int main (int argc, char *argv[])
     (void) signal (SIGABRT, sigcatch);
     (void) signal (SIGTRAP, sigcatch);
 
-    // set post_capture_command to default values
-    post_capture_command[0] = NULL;
-    post_capture_command[1] = NULL;
-    post_capture_command[2] = NULL;
+    fprintf (stderr, "Using videodevice: %s\n", videodevice);
+    fprintf (stderr, "Saving images to: %s\n", outputfile);
+    fprintf (stderr, "Image size: %dx%d\n", width, height);
+    fprintf (stderr, "Taking snapshot every %d seconds\n", delay);
+    fprintf (stderr, "Taking images using mmap\n");
 
-    //Options Parsing (FIXME)
-    while ((argc > 1) && (argv[1][0] == '-')) {
-        switch (argv[1][1]) {
-        case 'v':
-            verbose++;
-            break;
-
-        case 'o':
-            outputfile = &argv[1][2];
-            /* A % sign indicates format string for multi-file sequence */
-            if (strchr(outputfile, '%'))
-                multifile = 1;
-            break;
-
-        case 'd':
-            videodevice = &argv[1][2];
-            break;
-
-        case 'x':
-            width = atoi (&argv[1][2]);
-            break;
-
-        case 'y':
-            height = atoi (&argv[1][2]);
-            break;
-
-        case 'r':
-            grabmethod = 0;
-            break;
-
-        case 'm':
-            format = V4L2_PIX_FMT_YUYV;
-            break;
-
-        case 'n':
-            num = atoi (&argv[1][2]);
-            break;
-
-        case 'j':
-            skip = atoi (&argv[1][2]);
-            break;
-
-        case 't':
-            delay = atoi (&argv[1][2]);
-            break;
-
-        case 'c':
-            post_capture_command[0] = &argv[1][2];
-            break;
-
-        case 'w':
-            post_capture_command_wait = 1;
-            break;
-
-        case 'B':
-            brightness = atoi (&argv[1][2]);
-            break;
-
-        case 'C':
-            contrast = atoi (&argv[1][2]);
-            break;
-
-        case 'S':
-            saturation = atoi (&argv[1][2]);
-            break;
-
-        case 'G':
-            gain = atoi (&argv[1][2]);
-            break;
-
-        case 'q':
-            quality = atoi (&argv[1][2]);
-            break;
-
-        case 'h':
-            usage ();
-            break;
-
-        default:
-            fprintf (stderr, "Unknown option %s \n", argv[1]);
-            usage ();
-        }
-        ++argv;
-        --argc;
-    }
-
-
-    /* user requrested quality activates YUYV mode */
-    if (quality != 95)
-        format = V4L2_PIX_FMT_YUYV;
-
-    if (post_capture_command[0])
-        post_capture_command[1] = outputfile;
-
-    if (verbose >= 1) {
-        fprintf (stderr, "Using videodevice: %s\n", videodevice);
-        fprintf (stderr, "Saving images to: %s\n", outputfile);
-        fprintf (stderr, "Image size: %dx%d\n", width, height);
-        fprintf (stderr, "Taking snapshot every %d seconds\n", delay);
-        if (grabmethod == 1)
-            fprintf (stderr, "Taking images using mmap\n");
-        else
-            fprintf (stderr, "Taking images using read\n");
-        if (post_capture_command[0])
-            fprintf (stderr, "Executing '%s' after each image capture\n",
-                     post_capture_command[0]);
-    }
     videoIn = (struct vdIn *) calloc (1, sizeof (struct vdIn));
     if (init_videoIn
         (videoIn, (char *) videodevice, width, height, format, grabmethod) < 0)
         exit (1);
 
     //Reset all camera controls
-    if (verbose >= 1)
-        fprintf (stderr, "Resetting camera settings\n");
+    fprintf (stderr, "Resetting camera settings\n");
     v4l2ResetControl (videoIn, V4L2_CID_BRIGHTNESS);
     v4l2ResetControl (videoIn, V4L2_CID_CONTRAST);
     v4l2ResetControl (videoIn, V4L2_CID_SATURATION);
     v4l2ResetControl (videoIn, V4L2_CID_GAIN);
 
-    //Setup Camera Parameters
-    if (brightness != 0) {
-        if (verbose >= 1)
-            fprintf (stderr, "Setting camera brightness to %d\n", brightness);
-        v4l2SetControl (videoIn, V4L2_CID_BRIGHTNESS, brightness);
-    } else if (verbose >= 1) {
-        fprintf (stderr, "Camera brightness level is %d\n",
-                 v4l2GetControl (videoIn, V4L2_CID_BRIGHTNESS));
-    }
-    if (contrast != 0) {
-        if (verbose >= 1)
-            fprintf (stderr, "Setting camera contrast to %d\n", contrast);
-        v4l2SetControl (videoIn, V4L2_CID_CONTRAST, contrast);
-    } else if (verbose >= 1) {
-        fprintf (stderr, "Camera contrast level is %d\n",
-                 v4l2GetControl (videoIn, V4L2_CID_CONTRAST));
-    }
-    if (saturation != 0) {
-        if (verbose >= 1)
-            fprintf (stderr, "Setting camera saturation to %d\n", saturation);
-        v4l2SetControl (videoIn, V4L2_CID_SATURATION, saturation);
-    } else if (verbose >= 1) {
-        fprintf (stderr, "Camera saturation level is %d\n",
-                 v4l2GetControl (videoIn, V4L2_CID_SATURATION));
-    }
-    if (gain != 0) {
-        if (verbose >= 1)
-            fprintf (stderr, "Setting camera gain to %d\n", gain);
-        v4l2SetControl (videoIn, V4L2_CID_GAIN, gain);
-    } else if (verbose >= 1) {
-        fprintf (stderr, "Camera gain level is %d\n",
-                 v4l2GetControl (videoIn, V4L2_CID_GAIN));
-    }
     ref_time = time (NULL);
 
     while (run) {
-        if (verbose >= 2)
-            fprintf (stderr, "Grabbing frame\n");
         if (uvcGrab (videoIn) < 0) {
             fprintf (stderr, "Error grabbing\n");
             close_v4l2 (videoIn);
@@ -386,18 +205,10 @@ int main (int argc, char *argv[])
         if (skip > 0) { skip--; continue; }
 
         if ((difftime (time (NULL), ref_time) > delay) || delay == 0) {
-            if (multifile == 1) {
-                sprintf (thisfile, outputfile, i);
-                i++;
-                if (verbose >= 1)
-                    fprintf (stderr, "Saving image to: %s\n", thisfile);
-                file = fopen (thisfile, "wb");
-            }
-            else {
-                if (verbose >= 1)
-                    fprintf (stderr, "Saving image to: %s\n", outputfile);
-                file = fopen (outputfile, "wb");
-            }
+            sprintf (thisfile, "snap_%d.jpg", i);
+            i++;
+            fprintf (stderr, "Saving image to: %s\n", thisfile);
+            file = fopen (thisfile, "wb");
             
             if (file != NULL) {
                 switch (videoIn->formatIn) {
@@ -412,21 +223,9 @@ int main (int argc, char *argv[])
                 fclose (file);
                 videoIn->getPict = 0;
             }
-            if (post_capture_command[0]) {
-                if (verbose >= 1)
-                    fprintf (stderr, "Executing '%s %s'\n", post_capture_command[0],
-                             post_capture_command[1]);
-                if (spawn (post_capture_command, post_capture_command_wait, verbose)) {
-                    fprintf (stderr, "Command exited with error\n");
-                    close_v4l2 (videoIn);
-                    free (videoIn);
-                    exit (1);
-                }
-            }
-
             ref_time = time (NULL);
         }
-        if ((delay == 0) || (num == i))
+        if ( num == i)
             break;
     }
     close_v4l2 (videoIn);
