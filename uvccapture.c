@@ -151,8 +151,8 @@ int compress_yuyv_to_jpeg (struct vdIn *vd, FILE * file, int quality)
 int main (int argc, char *argv[])
 {
     char *videodevice = "/dev/video0";
-    char *outputfile = "snap.jpg";
-    char  thisfile[200]; /* used as filename buffer in multi-file seq. */
+    char *pathfile = "/home/dipascual/Pictures/";
+    char thisfile[200]; /* used as filename buffer in multi-file seq. */
     int format = V4L2_PIX_FMT_YUYV;
     int grabmethod = 1;
     int width = 320;
@@ -175,7 +175,6 @@ int main (int argc, char *argv[])
     (void) signal (SIGTRAP, sigcatch);
 
     fprintf (stderr, "Using videodevice: %s\n", videodevice);
-    fprintf (stderr, "Saving images to: %s\n", outputfile);
     fprintf (stderr, "Image size: %dx%d\n", width, height);
     fprintf (stderr, "Taking snapshot every %d seconds\n", delay);
     fprintf (stderr, "Taking images using mmap\n");
@@ -205,7 +204,7 @@ int main (int argc, char *argv[])
         if (skip > 0) { skip--; continue; }
 
         if ((difftime (time (NULL), ref_time) > delay) || delay == 0) {
-            sprintf (thisfile, "snap_%d.jpg", i);
+            sprintf (thisfile, "%ssnap_%d.jpg", pathfile, i);
             i++;
             fprintf (stderr, "Saving image to: %s\n", thisfile);
             file = fopen (thisfile, "wb");
